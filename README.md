@@ -24,21 +24,10 @@ and reporting workflows.
 
 - [x] Data pipeline — `src/fetch_weo_data.py`
 - [x] Forecasting module — `src/forecast.py` (ARIMA + VAR)
-- [ ] Anomaly detection
+- [x] Anomaly detection — `src/anomaly_detection.py` (rolling-origin backtest)
 - [ ] LLM briefing agent
 
 ## Project structure
-
-```
-imf-macro-forecasting/
-├── README.md
-├── requirements.txt
-├── data/                  # fetched/generated datasets (gitignored)
-├── notebooks/             # exploration and analysis
-└── src/
-    └── fetch_weo_data.py  # pulls WEO indicators from IMF DataMapper API
-```
-
 ## Setup
 
 ```bash
@@ -47,6 +36,7 @@ source venv/bin/activate       # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 python src/fetch_weo_data.py   # pulls WEO data -> data/weo_macro_indicators.csv
 python src/forecast.py         # generates forecasts -> data/forecasts.csv
+python src/anomaly_detection.py  # flags deviations -> data/anomalies.csv
 ```
 
 `forecast.py` fits two models per country:
@@ -57,6 +47,14 @@ python src/forecast.py         # generates forecasts -> data/forecasts.csv
 
 Both forecast types are written to `data/forecasts.csv` alongside the actuals,
 tagged by `value_type`, so they can be compared directly.
+
+`anomaly_detection.py` runs a rolling-origin backtest: at each year, it fits a
+model on everything before it, forecasts one step ahead, and flags years where
+the actual value deviates more than 2 standard deviations from what the model
+expected. Note that WEO data blends true historical actuals with the IMF's own
+forward projections with no flag distinguishing the two, so a flagged year
+means "this diverged notably from a simple trend model" - worth a second look,
+whether that's a real economic shock or a revised outlook.
 
 ## Data source
 
