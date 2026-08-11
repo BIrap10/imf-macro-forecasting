@@ -22,7 +22,7 @@ INDICATORS = {
 }
 
 # Pick your countries (ISO alpha-3 codes)
-COUNTRIES = ["USA", "GBR", "DEU", "JPN", "BRA"]
+COUNTRIES = ["ITA", "GRC", "ESP", "CAN", "GBR", "CHN", "USA"]
 
 OUTPUT_PATH = "data/weo_macro_indicators.csv"
 
