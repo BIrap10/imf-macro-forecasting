@@ -13,19 +13,38 @@ and reporting workflows.
 ## Pipeline
 
 1. **Data** — pull WEO indicators (real GDP growth, inflation, fiscal balance,
-   current account, government debt) via the public IMF DataMapper API.
+   current account, government debt) via the public IMF DataMapper API, for
+   Italy, Greece, Spain, Canada, UK, China, and the US.
 2. **Forecast** — fit ARIMA/VAR models per country and indicator.
 3. **Anomaly flagging** — flag cases where actuals deviate meaningfully from
-   forecast/trend.
-4. **Agent briefing** — an LLM takes the forecast output and flags and drafts
+   forecast/trend (historical backtest).
+4. **IMF comparison** — hold out recent years, forecast them independently,
+   and compare to what the IMF itself currently projects for those same
+   years - a present-tense check, not a historical one.
+5. **Agent briefing** — an LLM takes the forecast output and flags and drafts
    a short, readable summary of what changed and why it matters.
+6. **Visualization** — chart the forecasts, IMF comparison, and flagged
+   anomalies for quick visual review.
 
 ## Status
 
 - [x] Data pipeline — `src/fetch_weo_data.py`
 - [x] Forecasting module — `src/forecast.py` (ARIMA + VAR)
 - [x] Anomaly detection — `src/anomaly_detection.py` (rolling-origin backtest)
-- [ ] LLM briefing agent
+- [x] IMF comparison — `src/compare_to_imf.py` (near-term hold-out check)
+- [x] LLM briefing agent — `src/generate_briefing.py` (Claude API)
+- [x] Visualization — `src/visualize.py`
+
+## Charts
+
+**Real GDP growth: actual history vs. ARIMA/VAR forecast, per country**
+![Forecast fan chart](charts/forecast_fan.png)
+
+**Where our model diverges from IMF's current outlook**
+![IMF comparison heatmap](charts/imf_comparison_heatmap.png)
+
+**Largest flagged deviations from trend (rolling-origin backtest)**
+![Top anomalies](charts/top_anomalies.png)
 
 ## Project structure
 ## Setup
@@ -37,6 +56,10 @@ pip install -r requirements.txt
 python src/fetch_weo_data.py   # pulls WEO data -> data/weo_macro_indicators.csv
 python src/forecast.py         # generates forecasts -> data/forecasts.csv
 python src/anomaly_detection.py  # flags deviations -> data/anomalies.csv
+python src/compare_to_imf.py     # near-term check -> data/imf_comparison.csv
+export ANTHROPIC_API_KEY="sk-ant-..."  # get one at console.anthropic.com/settings/keys
+python src/generate_briefing.py  # drafts a readable summary -> data/briefing.md
+python src/visualize.py          # generates charts -> charts/*.png
 ```
 
 `forecast.py` fits two models per country:
@@ -55,6 +78,18 @@ expected. Note that WEO data blends true historical actuals with the IMF's own
 forward projections with no flag distinguishing the two, so a flagged year
 means "this diverged notably from a simple trend model" - worth a second look,
 whether that's a real economic shock or a revised outlook.
+
+`compare_to_imf.py` answers a different question: pretending we're standing at
+the end of 2023, it forecasts 2024-2026 using only pre-2023 data, then compares
+that forecast to what the IMF's own current WEO data shows for those same
+years. This checks whether a simple model agrees with the IMF's own present-day
+outlook, rather than testing against distant historical shocks.
+
+`generate_briefing.py` is the agentic layer: it packages each country's latest
+actuals, forecast trajectory, and any flagged anomalies into a prompt, sends it
+to Claude, and writes the resulting plain-English briefing to `data/briefing.md`.
+This turns raw model output into something a person (or a hiring manager
+reading this repo) would actually want to read.
 
 ## Data source
 
