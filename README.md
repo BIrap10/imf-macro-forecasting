@@ -25,6 +25,8 @@ and reporting workflows.
    a short, readable summary of what changed and why it matters.
 6. **Visualization** — chart the forecasts, IMF comparison, and flagged
    anomalies for quick visual review.
+7. **Accuracy metrics** — compute MAE/RMSE from both backtests, turning
+   "the model seems reasonable" into a measured claim.
 
 ## Status
 
@@ -34,6 +36,7 @@ and reporting workflows.
 - [x] IMF comparison — `src/compare_to_imf.py` (near-term hold-out check)
 - [x] LLM briefing agent — `src/generate_briefing.py` (Claude API)
 - [x] Visualization — `src/visualize.py`
+- [x] Accuracy metrics — `src/model_accuracy.py` (MAE/RMSE)
 
 ## Charts
 
@@ -60,6 +63,7 @@ python src/compare_to_imf.py     # near-term check -> data/imf_comparison.csv
 export ANTHROPIC_API_KEY="sk-ant-..."  # get one at console.anthropic.com/settings/keys
 python src/generate_briefing.py  # drafts a readable summary -> data/briefing.md
 python src/visualize.py          # generates charts -> charts/*.png
+python src/model_accuracy.py     # computes MAE/RMSE -> data/accuracy_report.csv
 ```
 
 `forecast.py` fits two models per country:
@@ -90,6 +94,14 @@ actuals, forecast trajectory, and any flagged anomalies into a prompt, sends it
 to Claude, and writes the resulting plain-English briefing to `data/briefing.md`.
 This turns raw model output into something a person (or a hiring manager
 reading this repo) would actually want to read.
+
+`model_accuracy.py` computes MAE (Mean Absolute Error) and RMSE (Root Mean
+Squared Error) from both backtests: historical accuracy from
+`anomaly_detection.py`'s rolling-origin test, and agreement with the IMF's
+current outlook from `compare_to_imf.py`'s 2024-2026 hold-out. This replaces
+"the model seems reasonable" with a specific, measured number - e.g. "our
+1-year-ahead GDP growth forecasts are off by an average of X percentage
+points historically."
 
 ## Data source
 
