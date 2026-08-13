@@ -10,6 +10,11 @@ year's value, unchanged) - this answers the question every forecast should be
 able to answer: is the model actually adding value, or would a dead-simple
 guess do just as well?
 
+The ARIMA order is selected once per series (by AIC, via arima_utils.py),
+using only the initial training window - not the full series - so the order
+choice can't "see" the years it's about to be tested against. That avoids
+leaking future information into the backtest.
+
 Note: WEO data blends true historical actuals with the IMF's own forward
 projections, with no flag distinguishing the two. So a "flagged" year means
 "this diverged notably from a simple trend model" - which could reflect a real
@@ -24,6 +29,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
+from arima_utils import select_arima_order
 
 warnings.filterwarnings("ignore")
 
@@ -46,6 +52,11 @@ def one_step_residuals(series: pd.Series) -> pd.DataFrame:
     year t with both ARIMA and a naive (persistence) baseline, record both
     residuals. One row per testable year."""
     years = series.index.tolist()
+
+    # Select order once, from the initial window only - avoids picking an
+    # order based on data from years we're about to "forecast" in the loop.
+    order = select_arima_order(series.iloc[:MIN_HISTORY].values)
+
     rows = []
     for i in range(MIN_HISTORY, len(years)):
         train = series.iloc[:i]
@@ -55,12 +66,13 @@ def one_step_residuals(series: pd.Series) -> pd.DataFrame:
         naive_forecast = float(train.iloc[-1])  # "predict no change from last year"
 
         try:
-            fitted = ARIMA(train.values, order=(1, 1, 1)).fit()
+            fitted = ARIMA(train.values, order=order).fit()
             forecast = float(fitted.forecast(steps=1)[0])
             rows.append({"year": year, "actual": actual, "forecast": forecast,
                         "residual": actual - forecast,
                         "naive_forecast": naive_forecast,
-                        "naive_residual": actual - naive_forecast})
+                        "naive_residual": actual - naive_forecast,
+                        "arima_order": str(order)})
         except Exception:
             continue
     return pd.DataFrame(rows)
@@ -91,7 +103,7 @@ def run(input_path: str = INPUT_PATH, output_path: str = OUTPUT_PATH) -> pd.Data
     result = pd.concat(all_flags, ignore_index=True)
     result = result[["country", "indicator", "year", "actual", "forecast",
                      "residual", "naive_forecast", "naive_residual",
-                     "z_score", "flagged"]]
+                     "z_score", "flagged", "arima_order"]]
     result = result.sort_values(["country", "indicator", "year"])
     result.to_csv(output_path, index=False)
 
@@ -104,6 +116,12 @@ def run(input_path: str = INPUT_PATH, output_path: str = OUTPUT_PATH) -> pd.Data
     verdict = "beats" if arima_mae < naive_mae else "loses to"
     print(f"\nARIMA MAE: {arima_mae:.2f}  |  Naive baseline MAE: {naive_mae:.2f}  "
           f"-> ARIMA {verdict} the naive baseline overall")
+
+    orders_used = (result[["country", "indicator", "arima_order"]]
+                  .drop_duplicates()
+                  .sort_values(["country", "indicator"]))
+    print(f"\nSelected ARIMA orders (by AIC, {orders_used['arima_order'].nunique()} distinct orders used):")
+    print(orders_used.to_string(index=False))
 
     if n_flagged:
         top = result[result["flagged"]].reindex(

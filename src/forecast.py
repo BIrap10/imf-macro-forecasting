@@ -15,6 +15,7 @@ import warnings
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.api import VAR
+from arima_utils import select_arima_order
 
 warnings.filterwarnings("ignore")  # statsmodels convergence warnings are noisy on short series
 
@@ -31,9 +32,10 @@ INDICATOR_COLS = [
 
 
 def forecast_arima(series: pd.Series, steps: int) -> list[float]:
-    """Fit a simple ARIMA(1,1,1) on one indicator's history and forecast ahead."""
-    model = ARIMA(series.values, order=(1, 1, 1))
-    fitted = model.fit()
+    """Pick the best-fitting ARIMA order for this series (by AIC), fit it,
+    and forecast ahead."""
+    order = select_arima_order(series.values)
+    fitted = ARIMA(series.values, order=order).fit()
     return list(fitted.forecast(steps=steps))
 
 
