@@ -5,6 +5,11 @@ before it, forecasts one step ahead, and compares that forecast to what actually
 happened (per the WEO dataset). Years where the deviation is large relative to
 that series' typical error get flagged.
 
+Also computes a naive baseline forecast at each step (just carry forward last
+year's value, unchanged) - this answers the question every forecast should be
+able to answer: is the model actually adding value, or would a dead-simple
+guess do just as well?
+
 Note: WEO data blends true historical actuals with the IMF's own forward
 projections, with no flag distinguishing the two. So a "flagged" year means
 "this diverged notably from a simple trend model" - which could reflect a real
@@ -38,18 +43,24 @@ INDICATOR_COLS = [
 
 def one_step_residuals(series: pd.Series) -> pd.DataFrame:
     """Walk forward through the series: fit on everything before year t, forecast
-    year t, record the residual (actual - forecast). One row per testable year."""
+    year t with both ARIMA and a naive (persistence) baseline, record both
+    residuals. One row per testable year."""
     years = series.index.tolist()
     rows = []
     for i in range(MIN_HISTORY, len(years)):
         train = series.iloc[:i]
         actual = series.iloc[i]
         year = years[i]
+
+        naive_forecast = float(train.iloc[-1])  # "predict no change from last year"
+
         try:
             fitted = ARIMA(train.values, order=(1, 1, 1)).fit()
             forecast = float(fitted.forecast(steps=1)[0])
             rows.append({"year": year, "actual": actual, "forecast": forecast,
-                        "residual": actual - forecast})
+                        "residual": actual - forecast,
+                        "naive_forecast": naive_forecast,
+                        "naive_residual": actual - naive_forecast})
         except Exception:
             continue
     return pd.DataFrame(rows)
@@ -79,16 +90,26 @@ def run(input_path: str = INPUT_PATH, output_path: str = OUTPUT_PATH) -> pd.Data
 
     result = pd.concat(all_flags, ignore_index=True)
     result = result[["country", "indicator", "year", "actual", "forecast",
-                     "residual", "z_score", "flagged"]]
+                     "residual", "naive_forecast", "naive_residual",
+                     "z_score", "flagged"]]
     result = result.sort_values(["country", "indicator", "year"])
     result.to_csv(output_path, index=False)
 
     n_flagged = int(result["flagged"].sum())
     print(f"Saved {len(result)} rows to {output_path} ({n_flagged} flagged as anomalies)")
+
+    # Quick ARIMA-vs-naive scoreboard, printed here so it's visible on every run
+    arima_mae = result["residual"].abs().mean()
+    naive_mae = result["naive_residual"].abs().mean()
+    verdict = "beats" if arima_mae < naive_mae else "loses to"
+    print(f"\nARIMA MAE: {arima_mae:.2f}  |  Naive baseline MAE: {naive_mae:.2f}  "
+          f"-> ARIMA {verdict} the naive baseline overall")
+
     if n_flagged:
         top = result[result["flagged"]].reindex(
             result[result["flagged"]]["z_score"].abs().sort_values(ascending=False).index
         )
+        print("\nTop flagged deviations:")
         print(top.head(10).to_string(index=False))
     return result
 

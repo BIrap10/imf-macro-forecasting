@@ -17,6 +17,10 @@ RMSE (Root Mean Squared Error): similar, but penalizes large misses more
 heavily. If RMSE is much bigger than MAE, it means a few big outliers are
 driving the error - which lines up with what anomaly_detection.py flags.
 
+Also reports ARIMA vs. a naive baseline (predict "no change from last year")
+per indicator - the standard sanity check every forecasting model should pass:
+is it actually beating the simplest possible guess?
+
 Input:  data/anomalies.csv, data/imf_comparison.csv
 Output: data/accuracy_report.csv, printed summary
 """
@@ -75,6 +79,27 @@ def run(backtest_path: str = BACKTEST_PATH, comparison_path: str = COMPARISON_PA
     print(bt_by_indicator[["label", "n", "mae", "rmse"]]
           .sort_values("mae")
           .to_string(index=False, float_format=lambda x: f"{x:.2f}"))
+
+    # --- ARIMA vs. naive baseline: is the model actually adding value? ---
+    naive_by_indicator = compute_metrics(backtest, "naive_residual", ["indicator"])
+    naive_by_indicator = naive_by_indicator.rename(columns={"mae": "naive_mae", "rmse": "naive_rmse"})
+    scoreboard = bt_by_indicator.merge(naive_by_indicator[["indicator", "naive_mae", "naive_rmse"]],
+                                       on="indicator")
+    scoreboard["arima_wins"] = scoreboard["mae"] < scoreboard["naive_mae"]
+    scoreboard["improvement_pct"] = (
+        (scoreboard["naive_mae"] - scoreboard["mae"]) / scoreboard["naive_mae"] * 100
+    )
+
+    print("\n" + "-" * 70)
+    print("ARIMA vs. NAIVE BASELINE (predict 'no change from last year')")
+    print("-" * 70)
+    for _, row in scoreboard.sort_values("improvement_pct", ascending=False).iterrows():
+        verdict = "beats" if row["arima_wins"] else "LOSES TO"
+        print(f"  {row['label']:<28} ARIMA MAE {row['mae']:.2f}  vs  "
+              f"Naive MAE {row['naive_mae']:.2f}  -> ARIMA {verdict} naive "
+              f"({row['improvement_pct']:+.0f}%)")
+    n_wins = int(scoreboard["arima_wins"].sum())
+    print(f"\nARIMA beats the naive baseline on {n_wins} of {len(scoreboard)} indicators.")
 
     # --- Agreement with IMF's current published numbers, 2024-2026 ---
     cmp_overall = compute_metrics(comparison, "difference", [])
