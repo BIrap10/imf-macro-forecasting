@@ -1,7 +1,8 @@
 """
 visualize.py
 Generates three charts from the project's existing outputs:
-  1. Forecast fan     - actual history + ARIMA/VAR forecast, one panel per country
+  1. Forecast fan     - actual history + ARIMA/VAR forecast with 95% CI bands,
+                         one panel per country
   2. IMF comparison   - heatmap of where our model agrees/disagrees with IMF's
                          current outlook, country x indicator
   3. Top anomalies    - the largest flagged deviations from anomaly_detection.py
@@ -31,7 +32,8 @@ INDICATOR_LABELS = {
 
 
 def plot_forecast_fan(indicator: str = "real_gdp_growth_pct"):
-    """Small-multiples chart: actual history + ARIMA/VAR forecast, per country."""
+    """Small-multiples chart: actual history + ARIMA/VAR forecast with 95% CI
+    bands, per country."""
     df = pd.read_csv(FORECASTS_PATH)
     df = df[df["indicator"] == indicator]
     countries = sorted(df["country"].unique())
@@ -54,10 +56,22 @@ def plot_forecast_fan(indicator: str = "real_gdp_growth_pct"):
             bridge_y = list(actual["value"].tail(1)) + list(arima["value"])
             bridge_x = list(actual["year"].tail(1)) + list(arima["year"])
             ax.plot(bridge_x, bridge_y, color="#C0392B", linestyle="--", linewidth=1.3, label="ARIMA")
+            if "lower_95" in arima.columns and arima["lower_95"].notna().any():
+                band_x = list(actual["year"].tail(1)) + list(arima["year"])
+                band_lo = list(actual["value"].tail(1)) + list(arima["lower_95"])
+                band_hi = list(actual["value"].tail(1)) + list(arima["upper_95"])
+                ax.fill_between(band_x, band_lo, band_hi, color="#C0392B", alpha=0.15,
+                                label="ARIMA 95% CI")
         if not var.empty:
             bridge_y = list(actual["value"].tail(1)) + list(var["value"])
             bridge_x = list(actual["year"].tail(1)) + list(var["year"])
             ax.plot(bridge_x, bridge_y, color="#27AE60", linestyle=":", linewidth=1.5, label="VAR")
+            if "lower_95" in var.columns and var["lower_95"].notna().any():
+                band_x = list(actual["year"].tail(1)) + list(var["year"])
+                band_lo = list(actual["value"].tail(1)) + list(var["lower_95"])
+                band_hi = list(actual["value"].tail(1)) + list(var["upper_95"])
+                ax.fill_between(band_x, band_lo, band_hi, color="#27AE60", alpha=0.12,
+                                label="VAR 95% CI")
 
         ax.set_title(country, fontsize=11, fontweight="bold")
         ax.tick_params(labelsize=8)
@@ -67,7 +81,7 @@ def plot_forecast_fan(indicator: str = "real_gdp_growth_pct"):
         axes[j].axis("off")
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 1.02), fontsize=10)
+    fig.legend(handles, labels, loc="upper center", ncol=5, bbox_to_anchor=(0.5, 1.02), fontsize=9)
     fig.suptitle(f"{INDICATOR_LABELS.get(indicator, indicator)} — actual vs. forecast",
                 fontsize=13, y=1.06)
     fig.tight_layout()

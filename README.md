@@ -15,7 +15,9 @@ and reporting workflows.
 1. **Data** — pull WEO indicators (real GDP growth, inflation, fiscal balance,
    current account, government debt) via the public IMF DataMapper API, for
    Italy, Greece, Spain, Canada, UK, China, and the US.
-2. **Forecast** — fit ARIMA/VAR models per country and indicator.
+2. **Forecast** — fit ARIMA/VAR models per country and indicator, with ARIMA
+   order chosen per series by AIC rather than a fixed guess, and 95%
+   confidence intervals for every forecast rather than a bare point number.
 3. **Anomaly flagging** — flag cases where actuals deviate meaningfully from
    forecast/trend (historical backtest).
 4. **IMF comparison** — hold out recent years, forecast them independently,
@@ -25,13 +27,14 @@ and reporting workflows.
    a short, readable summary of what changed and why it matters.
 6. **Visualization** — chart the forecasts, IMF comparison, and flagged
    anomalies for quick visual review.
-7. **Accuracy metrics** — compute MAE/RMSE from both backtests, turning
-   "the model seems reasonable" into a measured claim.
+7. **Accuracy metrics** — compute MAE/RMSE from both backtests, and check ARIMA
+   against a naive baseline, turning "the model seems reasonable" into a
+   measured claim.
 
 ## Status
 
 - [x] Data pipeline — `src/fetch_weo_data.py`
-- [x] Forecasting module — `src/forecast.py` (ARIMA + VAR)
+- [x] Forecasting module — `src/forecast.py` (ARIMA + VAR, with 95% CIs)
 - [x] Anomaly detection — `src/anomaly_detection.py` (rolling-origin backtest)
 - [x] IMF comparison — `src/compare_to_imf.py` (near-term hold-out check)
 - [x] LLM briefing agent — `src/generate_briefing.py` (Claude API)
@@ -67,13 +70,25 @@ python src/model_accuracy.py     # computes MAE/RMSE -> data/accuracy_report.csv
 ```
 
 `forecast.py` fits two models per country:
-- **ARIMA(1,1,1)** — one model per indicator, univariate
+- **ARIMA** — one model per indicator, univariate, with the order (p,d,q)
+  chosen per series by AIC (see `arima_utils.py`) instead of a fixed guess
 - **VAR** — one model per country, jointly fitting all five indicators to
   capture cross-variable dynamics (e.g. how inflation and fiscal balance move
   together)
 
 Both forecast types are written to `data/forecasts.csv` alongside the actuals,
-tagged by `value_type`, so they can be compared directly.
+tagged by `value_type`, along with `lower_95`/`upper_95` columns giving a 95%
+confidence interval - "likely between X and Y," not just a single number.
+The forecast fan chart shades these as bands so the growing uncertainty
+further into the future is visible, not just implied.
+
+`arima_utils.py` is a shared helper: instead of guessing ARIMA(1,1,1) for
+every series, it tests a handful of candidate orders and picks whichever gets
+the lowest AIC (a standard statistic that rewards fit while penalizing
+needless complexity). Used by both `forecast.py` and `anomaly_detection.py`.
+In `anomaly_detection.py`, the order is selected once per series from only
+the initial training window - not the full series - so the choice can't
+"see" the years it's later tested against.
 
 `anomaly_detection.py` runs a rolling-origin backtest: at each year, it fits a
 model on everything before it, forecasts one step ahead, and flags years where
@@ -101,7 +116,9 @@ Squared Error) from both backtests: historical accuracy from
 current outlook from `compare_to_imf.py`'s 2024-2026 hold-out. This replaces
 "the model seems reasonable" with a specific, measured number - e.g. "our
 1-year-ahead GDP growth forecasts are off by an average of X percentage
-points historically."
+points historically." It also scores ARIMA against a naive baseline (predict
+"no change from last year") per indicator - the standard sanity check for
+whether the model is actually adding value over the simplest possible guess.
 
 ## Data source
 
