@@ -30,6 +30,8 @@ and reporting workflows.
 7. **Accuracy metrics** — compute MAE/RMSE from both backtests, and check ARIMA
    against a naive baseline, turning "the model seems reasonable" into a
    measured claim.
+8. **Stationarity testing** — formal ADF test on every series, cross-checking
+   whether the differencing AIC selected actually matches a statistical test.
 
 ## Status
 
@@ -40,6 +42,7 @@ and reporting workflows.
 - [x] LLM briefing agent — `src/generate_briefing.py` (Claude API)
 - [x] Visualization — `src/visualize.py`
 - [x] Accuracy metrics — `src/model_accuracy.py` (MAE/RMSE)
+- [x] Stationarity testing — `src/stationarity_test.py` (ADF)
 
 ## Charts
 
@@ -67,6 +70,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."  # get one at console.anthropic.com/settin
 python src/generate_briefing.py  # drafts a readable summary -> data/briefing.md
 python src/visualize.py          # generates charts -> charts/*.png
 python src/model_accuracy.py     # computes MAE/RMSE -> data/accuracy_report.csv
+python src/stationarity_test.py  # ADF test -> data/stationarity_report.csv
 ```
 
 `forecast.py` fits two models per country:
@@ -119,6 +123,14 @@ current outlook from `compare_to_imf.py`'s 2024-2026 hold-out. This replaces
 points historically." It also scores ARIMA against a naive baseline (predict
 "no change from last year") per indicator - the standard sanity check for
 whether the model is actually adding value over the simplest possible guess.
+
+`stationarity_test.py` runs the Augmented Dickey-Fuller (ADF) test - the
+standard first diagnostic step in time-series work - on every series, both at
+the raw level and after one differencing pass. This is a formal statistical
+cross-check on `arima_utils.py`'s AIC-based order selection: if a series is
+non-stationary at the level but stationary once differenced, that confirms
+d=1 was the statistically correct call, not just an AIC-preferred guess made
+without a formal test behind it.
 
 ## Data source
 
